@@ -27,6 +27,10 @@ class APIData {
             
             guard let data = data else { return }
             
+            if let jsonString = String(data: data, encoding: .utf8) {
+                    print("Response JSON: \(jsonString)")
+                }
+            
             do {
                 let response = try JSONDecoder().decode(YoutubeSearchModel.self, from: data)
                 completion(.success(response))
