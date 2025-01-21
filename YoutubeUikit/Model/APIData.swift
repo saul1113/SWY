@@ -8,10 +8,10 @@
 import Foundation
 
 class APIData {
-
-    private let apiKey = "AIzaSyDPJcZNuhMI9wfCmh1Ljsx7CqfYE2lzVMQ"
+    
+    private let apiKey = getApiKey() ?? ""
     private let apiURL = "https://www.googleapis.com/youtube/v3/search"
-
+    
     func fetchVideoData(keyword: String, pageToken:String?, completion: @escaping  (Result<YoutubeSearchModel, Error>) -> Void ) {
         var urlString = "\(apiURL)?q=\(keyword)&part=snippet&maxResults=10&key=\(apiKey)"
         if let token = pageToken {
@@ -35,7 +35,14 @@ class APIData {
             }
         }.resume()
     }
+    
 }
 
-
-
+func getApiKey() -> String? {
+    guard let path = Bundle.main.path(forResource: "SecretKey", ofType: "plist"),
+          let dictionary = NSDictionary(contentsOfFile: path) as? [String: Any],
+          let apiKey = dictionary["API_KEY"] as? String else {
+        return nil
+    }
+    return apiKey
+}
