@@ -11,7 +11,7 @@ import WebKit
 class WebViewController: UIViewController {
     var videoID: String?
     private let webView = WKWebView()
-
+    
     override func viewDidLoad() {
         super.viewDidLoad()
         setUpUI()
@@ -19,7 +19,7 @@ class WebViewController: UIViewController {
     }
     
     private func setUpUI() {
-        view.backgroundColor = .systemBackground
+        view.backgroundColor = .black
         webView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(webView)
         

@@ -12,10 +12,10 @@ class YoutubeViewController: UIViewController {
     private let tableView = UITableView()
     private let api = APIData()
     
-    private var videos: [YoutubeSearchModel.Video] = []
+    private var videos: [(video: YoutubeSearchModel.Video, channelImageURL: String?)] = []
     private var nextPage: String?
     private var loading: Bool = false
-
+    
     override func viewDidLoad() {
         super.viewDidLoad()
         setUpUI()
@@ -53,12 +53,27 @@ class YoutubeViewController: UIViewController {
             switch result {
             case .success(let response):
                 self.nextPage = response.nextPageToken
-                self.videos.append(contentsOf: response.items)
-                DispatchQueue.main.async {
-                    self.tableView.reloadData()
+                let fetchedVideos = response.items.map { video in
+                    (video: video, channelImageURL: String?.none) // 초기값은 nil
+                }
+                
+                let channelIDs = response.items.map { $0.snippet.channelId }
+                self.api.fetchChannelImages(channelIDs: channelIDs) { channelResult in
+                    switch channelResult {
+                    case .success(let channelImages):
+                        let updatedVideos = fetchedVideos.map { (video, _) in
+                            (video: video, channelImageURL: channelImages[video.snippet.channelId])
+                        }
+                        self.videos.append(contentsOf: updatedVideos)
+                        DispatchQueue.main.async {
+                            self.tableView.reloadData()
+                        }
+                    case .failure(let error):
+                        print("Error fetching channel images:", error)
+                    }
                 }
             case .failure(let error):
-                print("\(error)")
+                print("Error fetching videos:", error)
             }
         }
     }
@@ -72,14 +87,14 @@ extension YoutubeViewController: UITableViewDelegate, UITableViewDataSource {
     
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "VideoCell", for: indexPath) as! YouTubeCell
-        let video = videos[indexPath.row]
-        cell.configure(with: video)
+        let (video, channelImageURL) = videos[indexPath.row]
+        cell.configure(with: video, channelImageURL: channelImageURL)
         
         return cell
     }
     
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
-        let video = videos[indexPath.row]
+        let video = videos[indexPath.row].video
         let webVC = WebViewController()
         webVC.videoID = video.id.videoId
         navigationController?.pushViewController(webVC, animated: true)
@@ -101,11 +116,11 @@ extension YoutubeViewController: UIScrollViewDelegate {
         let offsetY = scrollView.contentOffset.y    //스크롤 수직방향 위치
         let contentHeight = scrollView.contentSize.height   //스크롤뷰의 전체 콘텐츠 높이
         let height = scrollView.frame.size.height   //스크롤뷰의 표시되는 화면의 영역 높이
-
+        
         //스크롤 콘텐츠 끝부분 100pt 이내에 도달했는지, 스크롤 가능한 가장 아래위치
         if offsetY > contentHeight - height - 100 && !loading && nextPage != nil {  //로딩중이면 추가요청 방지, 다음 페이지토큰이 있는지 확인
             fetchVideos(keyword: searchBar.text ?? "")  //키워드를 통해 추가 동영상 데이터를 가져오는
-
+            
             /*
              •    - 100의 역할:
              •    데이터를 미리 로드하여 스크롤이 완료될 때까지 사용자에게 부드러운 경험을 제공합니다.
