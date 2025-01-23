@@ -89,8 +89,8 @@ class YoutubeViewController: UIViewController {
         }
         // 최신 검색어를 맨 앞에 추가
         searchHistory.insert(keyword, at: 0)
-        // 검색 기록의 최대 개수를 제한 (예: 10개)
-        if searchHistory.count > 10 {
+        // 검색 기록의 최대 개수를 제한
+        if searchHistory.count > 5 {
             searchHistory.removeLast()
         }
         // UserDefaults에 저장
