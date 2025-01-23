@@ -10,51 +10,118 @@ import UIKit
 class YoutubeViewController: UIViewController {
     private let searchBar = UISearchBar()
     private let tableView = UITableView()
-    private let api = APIData()
+    private let historyTableView = UITableView()
     
+    private let api = APIData()
+    private let searchHistoryKey = "SearchHistoryKey"
     private var videos: [(video: YoutubeSearchModel.Video, channelImageURL: String?)] = []
+    private var searchHistory: [String] = []
     private var nextPage: String?
-    private var loading: Bool = false
+    private var loading = false
+    
+    private var historyTableViewHeightConstraint: NSLayoutConstraint?
     
     override func viewDidLoad() {
         super.viewDidLoad()
-        setUpUI()
+        setupView()
+        loadSearchHistory()
     }
     
-    private func setUpUI() {
+    // MARK: - Setup
+    private func setupView() {
         view.backgroundColor = .systemBackground
-        
+        setupSearchBar()
+        setupTableView()
+        setupHistoryTableView()
+        setupNavigationBar()
+    }
+    
+    private func setupSearchBar() {
         searchBar.placeholder = "검색"
         searchBar.delegate = self
         navigationItem.titleView = searchBar
-        
+    }
+    
+    private func setupTableView() {
         tableView.delegate = self
         tableView.dataSource = self
         tableView.register(YouTubeCell.self, forCellReuseIdentifier: "VideoCell")
         tableView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(tableView)
+    }
+    
+    private func setupHistoryTableView() {
+        historyTableView.delegate = self
+        historyTableView.dataSource = self
+        historyTableView.isHidden = true
+        historyTableView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(historyTableView)
         
         NSLayoutConstraint.activate([
-            tableView.topAnchor.constraint(equalTo: view.topAnchor),
+            historyTableView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            historyTableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            historyTableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            
+            tableView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
+        //히스토리 높이를 동적으로 변경
+        historyTableViewHeightConstraint = historyTableView.heightAnchor.constraint(equalToConstant: 0)
+        historyTableViewHeightConstraint?.isActive = true
     }
     
+    private func setupNavigationBar() {
+        let backBarButtonItem = UIBarButtonItem(title: "", style: .plain, target: nil, action: nil)
+        navigationItem.backBarButtonItem = backBarButtonItem
+    }
+    
+    // MARK: - 검색 히스토리 메서드
+    private func loadSearchHistory() {
+        searchHistory = UserDefaults.standard.stringArray(forKey: searchHistoryKey) ?? []
+    }
+    
+    private func saveSearchHistory(keyword: String) {
+        // 중복된 검색어는 제거
+        if let existingIndex = searchHistory.firstIndex(of: keyword) {
+            searchHistory.remove(at: existingIndex)
+        }
+        // 최신 검색어를 맨 앞에 추가
+        searchHistory.insert(keyword, at: 0)
+        // 검색 기록의 최대 개수를 제한 (예: 10개)
+        if searchHistory.count > 10 {
+            searchHistory.removeLast()
+        }
+        // UserDefaults에 저장
+        UserDefaults.standard.set(searchHistory, forKey: searchHistoryKey)
+    }
+    
+    private func updateHistoryTableViewHeight() {
+        let rowHeight: CGFloat = 44
+        let maxVisibleRows = 5
+        let height = min(CGFloat(searchHistory.count) * rowHeight, CGFloat(maxVisibleRows) * rowHeight)
+        // 히스토리 테이블뷰가 표시 중일 때만 높이 업데이트
+        historyTableViewHeightConstraint?.constant = historyTableView.isHidden ? 0 : height
+        UIView.animate(withDuration: 0.3) {
+            self.view.layoutIfNeeded()
+        }
+    }
+    
+    // MARK: - API Fetch
     private func fetchVideos(keyword: String) {
         guard !loading else { return }
         loading = true
         
         api.fetchVideoData(keyword: keyword, pageToken: nextPage) { [weak self] result in
-            guard let self else { return }
+            guard let self = self else { return }
             self.loading = false
             
             switch result {
             case .success(let response):
                 self.nextPage = response.nextPageToken
                 let fetchedVideos = response.items.map { video in
-                    (video: video, channelImageURL: String?.none) // 초기값은 nil
+                    (video: video, channelImageURL: String?.none)
                 }
                 
                 let channelIDs = response.items.map { $0.snippet.channelId }
@@ -69,47 +136,70 @@ class YoutubeViewController: UIViewController {
                             self.tableView.reloadData()
                         }
                     case .failure(let error):
-                        print("Error fetching channel images:", error)
+                        print("Error fetching channel images: \(error)")
                     }
                 }
             case .failure(let error):
-                print("Error fetching videos:", error)
+                print("Error fetching videos: \(error)")
             }
         }
     }
 }
 
-// MARK: - 테이블뷰 및 서치바 Extension
-extension YoutubeViewController: UITableViewDelegate, UITableViewDataSource {
-    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        return videos.count
-    }
-    
-    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: "VideoCell", for: indexPath) as! YouTubeCell
-        let (video, channelImageURL) = videos[indexPath.row]
-        cell.configure(with: video, channelImageURL: channelImageURL)
-        
-        return cell
-    }
-    
-    func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
-        let video = videos[indexPath.row].video
-        let webVC = WebViewController()
-        webVC.videoID = video.id.videoId
-        navigationController?.pushViewController(webVC, animated: true)
-    }
-}
-
+// MARK: - UISearchBarDelegate
 extension YoutubeViewController: UISearchBarDelegate {
+    func searchBarTextDidBeginEditing(_ searchBar: UISearchBar) {
+        historyTableView.isHidden = false
+        historyTableView.reloadData()
+        updateHistoryTableViewHeight()
+    }
+    
     func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
         guard let keyword = searchBar.text, !keyword.isEmpty else { return }
-        videos = []     //video 리셋
+        saveSearchHistory(keyword: keyword)
+        videos = []
         nextPage = nil
         tableView.reloadData()
         fetchVideos(keyword: keyword)
+        historyTableView.isHidden = true
+        searchBar.resignFirstResponder()
     }
 }
+
+// MARK: - UITableViewDelegate, UITableViewDataSource
+extension YoutubeViewController: UITableViewDelegate, UITableViewDataSource {
+    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+        return tableView == historyTableView ? searchHistory.count : videos.count
+    }
+    
+    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        if tableView == historyTableView {
+            let cell = UITableViewCell()
+            cell.textLabel?.text = searchHistory[indexPath.row] //최신 검색어부터 순서대로
+            return cell
+        } else {
+            let cell = tableView.dequeueReusableCell(withIdentifier: "VideoCell", for: indexPath) as! YouTubeCell
+            let (video, channelImageURL) = videos[indexPath.row]
+            cell.configure(with: video, channelImageURL: channelImageURL)
+            return cell
+        }
+    }
+    
+    func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        if tableView == historyTableView {
+            let selectedKeyword = searchHistory[indexPath.row]
+            searchBar.text = selectedKeyword
+            searchBarSearchButtonClicked(searchBar)
+        } else {
+            let video = videos[indexPath.row].video
+            let webVC = WebViewController()
+            webVC.videoID = video.id.videoId
+            navigationController?.pushViewController(webVC, animated: true)
+        }
+    }
+}
+
+// MARK: - UIScrollViewDelegate
 
 extension YoutubeViewController: UIScrollViewDelegate {
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
