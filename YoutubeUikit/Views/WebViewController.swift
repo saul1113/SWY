@@ -33,9 +33,46 @@ class WebViewController: UIViewController {
     
     private func loadVideo() {
         guard let videoID = videoID else { return }
-        let urlString = "https://www.youtube.com/embed/\(videoID)"
-        guard let url = URL(string: urlString) else { return }
-        let request = URLRequest(url: url)
-        webView.load(request)
+        let html = """
+        <html>
+        <head>
+        <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh; /* 화면 전체 높이 */
+            background-color: black;
+        }
+        .video-container {
+            position: relative;
+            width: 100%;
+            max-width: 90%; /* 좌우 여백을 주어 화면에 잘 맞추기 위해 사용 */
+            height: 56.25vw; /* 16:9 비율 유지 */
+            max-height: 100%; /* 높이를 화면 안에서 제한 */
+        }
+        .video-container iframe {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        </style>
+        </head>
+        <body>
+        <div class="video-container">
+            <iframe src="https://www.youtube.com/embed/\(videoID)?playsinline=1&rel=0&showinfo=0"
+                    frameborder="0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowfullscreen>
+            </iframe>
+        </div>
+        </body>
+        </html>
+        """
+        webView.loadHTMLString(html, baseURL: nil)
     }
 }
