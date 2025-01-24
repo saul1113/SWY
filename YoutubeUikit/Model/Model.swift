@@ -18,15 +18,15 @@ struct YoutubeSearchModel: Codable {
     
     struct VideoID: Codable {
         let videoId: String
-        
-        private enum CodingKeys: String, CodingKey {
-            case videoId = "videoId"
-        }
+//        private enum CodingKeys: String, CodingKey {
+//            case videoId = "videoId"
+//        }
     }
     
     struct Snippet: Codable {
         let title: String
         let channelTitle: String
+        let channelId: String
         let thumbnails: Thumbnails
     }
     
@@ -35,6 +35,29 @@ struct YoutubeSearchModel: Codable {
     }
     
     struct Thumbnail: Codable {
-        let url: String
+        let url: String?
+    }
+}
+
+//채널 이미지 가져오기 위한 모델
+struct YoutubeChannelModel: Codable {
+    let items: [Channel]
+    
+    struct Channel: Codable {
+        let id: String
+        let snippet: Snippet
+    }
+    
+    struct Snippet: Codable {
+        let title: String
+        let thumbnails: Thumbnails
+    }
+    
+    struct Thumbnails: Codable {
+        let medium: Thumbnail
+    }
+    
+    struct Thumbnail: Codable {
+        let url: String?
     }
 }
