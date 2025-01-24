@@ -1,1 +1,8 @@
+# Secret Key 파일 무시
 SecretKey.plist
+
+# Assets 전체 무시
+Assets.xcassets/*
+
+# youtube.png 예외 처리
+!Assets.xcassets/youtube.imageset/youtube.png

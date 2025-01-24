@@ -11,6 +11,7 @@ class YoutubeViewController: UIViewController {
     private let searchBar = UISearchBar()
     private let tableView = UITableView()
     private let historyTableView = UITableView()
+    private let youtubeLogo = UIImageView()
     
     private let api = APIData()
     private let searchHistoryKey = "SearchHistoryKey"
@@ -31,6 +32,7 @@ class YoutubeViewController: UIViewController {
     private func setupView() {
         view.backgroundColor = .systemBackground
         setupSearchBar()
+        setupLogo()
         setupTableView()
         setupHistoryTableView()
         setupNavigationBar()
@@ -40,6 +42,14 @@ class YoutubeViewController: UIViewController {
         searchBar.placeholder = "검색"
         searchBar.delegate = self
         navigationItem.titleView = searchBar
+    }
+    
+    private func setupLogo() {
+        youtubeLogo.image = UIImage(named: "youtube")
+        youtubeLogo.contentMode = .scaleAspectFit
+        youtubeLogo.translatesAutoresizingMaskIntoConstraints = false
+        youtubeLogo.isHidden = false
+        view.addSubview(youtubeLogo)
     }
     
     private func setupTableView() {
@@ -65,8 +75,17 @@ class YoutubeViewController: UIViewController {
             tableView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+            tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            
+            youtubeLogo.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            youtubeLogo.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            youtubeLogo.widthAnchor.constraint(equalToConstant: 300),
+            youtubeLogo.heightAnchor.constraint(equalToConstant: 150)
         ])
+        
+        view.bringSubviewToFront(youtubeLogo)
+        // 테이블뷰가 로고를 덮고있어서, 로고를 최상위에 올리기
+
         //히스토리 높이를 동적으로 변경
         historyTableViewHeightConstraint = historyTableView.heightAnchor.constraint(equalToConstant: 0)
         historyTableViewHeightConstraint?.isActive = true
@@ -156,6 +175,8 @@ extension YoutubeViewController: UISearchBarDelegate {
     
     func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
         guard let keyword = searchBar.text, !keyword.isEmpty else { return }
+        youtubeLogo.isHidden = true // 검색 버튼 클릭 시 로고 숨김
+
         saveSearchHistory(keyword: keyword)
         videos = []
         nextPage = nil
@@ -196,6 +217,28 @@ extension YoutubeViewController: UITableViewDelegate, UITableViewDataSource {
             webVC.videoID = video.id.videoId
             navigationController?.pushViewController(webVC, animated: true)
         }
+    }
+    
+    func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
+        guard tableView == historyTableView else { return nil } // 검색 기록 테이블뷰만 적용
+        
+        let deleteAction = UIContextualAction(style: .destructive, title: "삭제") { [weak self] _, _, completionHandler in
+            guard let self = self else { return }
+            // 검색 기록에서 해당 항목 삭제
+            self.searchHistory.remove(at: indexPath.row)
+            UserDefaults.standard.set(self.searchHistory, forKey: self.searchHistoryKey)
+            
+            // 테이블 뷰 리로드 및 높이 업데이트
+            self.historyTableView.reloadData()
+            self.updateHistoryTableViewHeight()
+            
+            completionHandler(true)
+        }
+        
+        // 애니메이션 비활성화 (왼쪽에서 오른쪽 슬라이드 효과 제거)
+        let configuration = UISwipeActionsConfiguration(actions: [deleteAction])
+        configuration.performsFirstActionWithFullSwipe = false
+        return configuration
     }
 }
 
