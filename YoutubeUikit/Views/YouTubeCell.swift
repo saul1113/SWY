@@ -14,7 +14,6 @@ class YouTubeCell: UITableViewCell {
     private let channelImage = UIImageView()
     private static let imageCache = NSCache<NSString, UIImage>()
     
-    
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
         setUpUI()
@@ -31,13 +30,13 @@ class YouTubeCell: UITableViewCell {
         channelImage.translatesAutoresizingMaskIntoConstraints = false
         
         titleLabel.font = UIFont.boldSystemFont(ofSize: 16)
+        
         channelLabel.font = UIFont.boldSystemFont(ofSize: 14)
         channelLabel.textColor = .gray
+        
         channelImage.contentMode = .scaleAspectFit
         channelImage.clipsToBounds = true
         channelImage.layer.cornerRadius = 20
-//        channelImage.layer.borderWidth = 1
-//        channelImage.layer.borderColor = UIColor.gray.cgColor
         
         contentView.addSubview(thumbnailImageView)
         contentView.addSubview(channelImage)
@@ -66,6 +65,7 @@ class YouTubeCell: UITableViewCell {
         ])
     }
     
+    // MARK: - 채널 이미지 fetch
     func configure(with video: YoutubeSearchModel.Video, channelImageURL: String?) {
         titleLabel.text = video.snippet.title
         channelLabel.text = video.snippet.channelTitle
@@ -74,42 +74,39 @@ class YouTubeCell: UITableViewCell {
         
         // 썸네일 이미지 로드
         if let thumbnailURL = video.snippet.thumbnails.medium.url {
-            loadImage(from: thumbnailURL, into: thumbnailImageView, placeholder: "placeholder")
+            loadImage(from: thumbnailURL, into: thumbnailImageView)
         }
         
         // 채널 이미지 로드
         if let channelImageURL = channelImageURL {
-            loadImage(from: channelImageURL, into: channelImage, placeholder: "placeholder")
+            loadImage(from: channelImageURL, into: channelImage)
         } else {
             channelImage.image = UIImage(named: "placeholder")
         }
         
-        // 캐시 확인
-        func loadImage(from urlString: String, into imageView: UIImageView, placeholder: String) {
-            if let cachedImage = YouTubeCell.imageCache.object(forKey: urlString as NSString) {
-                //NSCache에서 이미 다운로드된 이미지를 확인
-                //urlString을 키로 사용해 캐싱된 이미지를 가져옴
+        // MARK: - 이미지 캐싱
+        func loadImage(from urlString: String, into imageView: UIImageView) {
+            if let cachedImage = ImageCacheManager.shared.loadImage(for: urlString) {
                 imageView.image = cachedImage
-                //다운로드를 생략하고 캐싱된 이미지를 사용하여 로딩 시간을 줄임.
                 return
             }
             
-            // 비동기로 이미지 다운로드 및 캐싱
-            imageView.image = UIImage(named: "placeholder")
-            DispatchQueue.global().async {
-                guard let url = URL(string: urlString) else { return }
-                do {
-                    let data = try Data(contentsOf: url)
-                    if let image = UIImage(data: data) {
-                        DispatchQueue.main.async {
-                            imageView.image = image
-                            YouTubeCell.imageCache.setObject(image, forKey: urlString as NSString)
-                        }
-                    }
-                } catch {
-                    print("Error downloading image: \(error)")
+            guard let url = URL(string: urlString) else { return }
+            
+            let task = URLSession.shared.dataTask(with: url) { data, response, error in
+                if let error = error {
+                    print("이미지 다운로드 실패: \(error.localizedDescription)")
+                    return
+                }
+                
+                guard let data = data, let image = UIImage(data: data) else { return }
+                
+                DispatchQueue.main.async {
+                    imageView.image = image
+                    ImageCacheManager.shared.saveImage(image, for: urlString)
                 }
             }
+            task.resume()
         }
     }
 }

@@ -17,10 +17,7 @@ struct YoutubeSearchModel: Codable {
     }
     
     struct VideoID: Codable {
-        let videoId: String
-//        private enum CodingKeys: String, CodingKey {
-//            case videoId = "videoId"
-//        }
+        let videoId: String?
     }
     
     struct Snippet: Codable {

@@ -26,12 +26,12 @@ class APIData {
                 return
             }
             
-            guard let data = data else { return }
-            
-            if let jsonString = String(data: data, encoding: .utf8) {
-                print("Response JSON: \(jsonString)")
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200,
+                  let data = data else {
+                completion(.failure(NSError(domain: "API_Error", code: -1, userInfo: nil)))
+                return
             }
-            
+       
             do {
                 let response = try JSONDecoder().decode(YoutubeSearchModel.self, from: data)
                 completion(.success(response))
