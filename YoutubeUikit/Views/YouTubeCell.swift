@@ -12,7 +12,6 @@ class YouTubeCell: UITableViewCell {
     private let titleLabel = UILabel()
     private let channelLabel = UILabel()
     private let channelImage = UIImageView()
-    private static let imageCache = NSCache<NSString, UIImage>()
     
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
@@ -21,6 +20,15 @@ class YouTubeCell: UITableViewCell {
     
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+    
+    override func prepareForReuse() {
+        super.prepareForReuse()
+        
+        thumbnailImageView.image = nil
+        channelImage.image = nil
+        titleLabel.text = nil
+        channelLabel.text = nil
     }
     
     private func setUpUI() {

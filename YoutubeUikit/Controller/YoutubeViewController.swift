@@ -10,22 +10,55 @@ import UIKit
 class YoutubeViewController: UIViewController {
     private let searchBar = UISearchBar()
     private let tableView = UITableView()
-    private let historyTableView = UITableView()
     private let youtubeLogo = UIImageView()
     
     private let api = APIData()
     private let searchHistoryKey = "SearchHistoryKey"
-    private var videos: [(video: YoutubeSearchModel.Video, channelImageURL: String?)] = []
     private var searchHistory: [String] = []
+    private var videos: [(video: YoutubeSearchModel.Video, channelImageURL: String?)] = []
     private var nextPage: String?
     private var loading = false
+    private var isSearching = false
     
-    private var historyTableViewHeightConstraint: NSLayoutConstraint?
+    private var diffableDataSource: UITableViewDiffableDataSource<Section, Item>!
     
     override func viewDidLoad() {
         super.viewDidLoad()
         setupView()
+        configDataSource()
         loadSearchHistory()
+    }
+    
+    // MARK: - Section & Item
+    enum Section {
+        case history
+        case results
+    }
+    
+    enum Item: Hashable, Equatable {    //Item 타입은 반드시 Hashable, Equtable 프로토콜을 반드시 명시해야함
+        static func == (lhs: Item, rhs: Item) -> Bool { //Eautable 프로토콜 채택 시 필수 구조체
+            switch (lhs, rhs) {
+            case (.history(let keyword1), .history(let keyworkd2)):
+                return keyword1 == keyworkd2
+            case (.video(let video1, let image1), .video(let video2, let image2)):
+                return video1.id.videoId == video2.id.videoId && image1 == image2
+            default:
+                return false
+            }
+        }
+        
+        case history(String)
+        case video(YoutubeSearchModel.Video, String?)
+        
+        func hash(into hasher: inout Hasher) {
+            switch self {
+            case .history(let keyword):
+                hasher.combine(keyword)
+            case .video(let video, _):
+                hasher.combine(video.id.videoId)
+//                hasher.combine(channelImageURL ?? "")
+            }
+        }
     }
     
     // MARK: - Setup
@@ -34,7 +67,6 @@ class YoutubeViewController: UIViewController {
         setupSearchBar()
         setupLogo()
         setupTableView()
-        setupHistoryTableView()
         setupNavigationBar()
     }
     
@@ -54,23 +86,11 @@ class YoutubeViewController: UIViewController {
     
     private func setupTableView() {
         tableView.delegate = self
-        tableView.dataSource = self
         tableView.register(YouTubeCell.self, forCellReuseIdentifier: "VideoCell")
         tableView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(tableView)
-    }
-    
-    private func setupHistoryTableView() {
-        historyTableView.delegate = self
-        historyTableView.dataSource = self
-        historyTableView.isHidden = true
-        historyTableView.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(historyTableView)
         
         NSLayoutConstraint.activate([
-            historyTableView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            historyTableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            historyTableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             
             tableView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
@@ -86,14 +106,50 @@ class YoutubeViewController: UIViewController {
         view.bringSubviewToFront(youtubeLogo)
         // 테이블뷰가 로고를 덮고있어서, 로고를 최상위에 올리기
 
-        //히스토리 높이를 동적으로 변경
-        historyTableViewHeightConstraint = historyTableView.heightAnchor.constraint(equalToConstant: 0)
-        historyTableViewHeightConstraint?.isActive = true
     }
     
     private func setupNavigationBar() {
         let backBarButtonItem = UIBarButtonItem(title: "", style: .plain, target: nil, action: nil)
         navigationItem.backBarButtonItem = backBarButtonItem
+    }
+    
+    
+    // MARK: - Diffable Datasource
+    
+    private func configDataSource() {
+        diffableDataSource = UITableViewDiffableDataSource<Section, Item>(tableView: tableView) { tableView, indexPath, item in
+            switch item {
+            case .history(let keyword):
+                let cell = UITableViewCell()
+                cell.textLabel?.text = keyword
+                return cell
+            case .video(let video, let channelImageURL):
+                let cell = tableView.dequeueReusableCell(withIdentifier: "VideoCell", for: indexPath) as! YouTubeCell
+                
+                cell.configure(with: video, channelImageURL: channelImageURL) //cell검색 화면이 안떠서 config호출 추가
+                return cell
+            }
+        }
+        
+        tableView.dataSource = diffableDataSource
+        applySnapshot()
+    }
+    
+    // MARK: - Snapshot
+    
+    private func applySnapshot() {
+        var snapShot = NSDiffableDataSourceSnapshot<Section, Item>()
+        
+        if isSearching {
+            snapShot.appendSections([.results])
+            snapShot.appendItems(videos.map { .video($0.video, $0.channelImageURL)}, toSection: .results)
+        } else {
+            snapShot.appendSections([.history])
+            snapShot.appendItems(searchHistory.map { .history($0) }, toSection: .history)
+        }
+        DispatchQueue.main.async {
+            self.diffableDataSource.apply(snapShot, animatingDifferences: true)
+        }
     }
     
     // MARK: - 검색 히스토리 메서드
@@ -116,17 +172,6 @@ class YoutubeViewController: UIViewController {
         UserDefaults.standard.set(searchHistory, forKey: searchHistoryKey)
     }
     
-    private func updateHistoryTableViewHeight() {
-        let rowHeight: CGFloat = 44
-        let maxVisibleRows = 5
-        let height = min(CGFloat(searchHistory.count) * rowHeight, CGFloat(maxVisibleRows) * rowHeight)
-        // 히스토리 테이블뷰가 표시 중일 때만 높이 업데이트
-        historyTableViewHeightConstraint?.constant = historyTableView.isHidden ? 0 : height
-        UIView.animate(withDuration: 0.3) {
-            self.view.layoutIfNeeded()
-        }
-    }
-    
     // MARK: - API Fetch
     private func fetchVideos(keyword: String) {
         guard !loading else { return }
@@ -139,7 +184,7 @@ class YoutubeViewController: UIViewController {
             switch result {
             case .success(let response):
                 self.nextPage = response.nextPageToken
-                let fetchedVideos = response.items.map { video in
+                var fetchedVideos = response.items.map { video in
                     (video: video, channelImageURL: String?.none)
                 }
                 
@@ -151,11 +196,12 @@ class YoutubeViewController: UIViewController {
                             (video: video, channelImageURL: channelImages[video.snippet.channelId])
                         }
                         self.videos.append(contentsOf: updatedVideos)
-                        DispatchQueue.main.async {
-                            self.tableView.reloadData()
-                        }
                     case .failure(let error):
                         print("Error fetching channel images: \(error)")
+                    }
+                    
+                    DispatchQueue.main.async {
+                        self.applySnapshot()
                     }
                 }
             case .failure(let error):
@@ -168,77 +214,73 @@ class YoutubeViewController: UIViewController {
 // MARK: - UISearchBarDelegate
 extension YoutubeViewController: UISearchBarDelegate {
     func searchBarTextDidBeginEditing(_ searchBar: UISearchBar) {
-        historyTableView.isHidden = false
-        historyTableView.reloadData()
-        updateHistoryTableViewHeight()
+        isSearching = false
+        applySnapshot()
     }
     
     func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
         guard let keyword = searchBar.text, !keyword.isEmpty else { return }
         youtubeLogo.isHidden = true // 검색 버튼 클릭 시 로고 숨김
-
+        isSearching = true
+        
         saveSearchHistory(keyword: keyword)
         videos = []
         nextPage = nil
-        tableView.reloadData()
+        
+        applySnapshot()
         fetchVideos(keyword: keyword)
-        historyTableView.isHidden = true
         searchBar.resignFirstResponder()
     }
 }
 
 // MARK: - UITableViewDelegate, UITableViewDataSource
-extension YoutubeViewController: UITableViewDelegate, UITableViewDataSource {
-    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        return tableView == historyTableView ? searchHistory.count : videos.count
+extension YoutubeViewController: UITableViewDelegate {  //Diffable Datasource를 쓰기 때문에 UITableViewDatasource (cellForRowAt)은 필요없음.
+    
+    func numberOfSections(in tableView: UITableView) -> Int {
+        return diffableDataSource.numberOfSections(in: tableView)
     }
     
-    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        if tableView == historyTableView {
-            let cell = UITableViewCell()
-            cell.textLabel?.text = searchHistory[indexPath.row] //최신 검색어부터 순서대로
-            return cell
-        } else {
-            let cell = tableView.dequeueReusableCell(withIdentifier: "VideoCell", for: indexPath) as! YouTubeCell
-            let (video, channelImageURL) = videos[indexPath.row]
-            cell.configure(with: video, channelImageURL: channelImageURL)
-            return cell
-        }
+    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+        return diffableDataSource.tableView(tableView, numberOfRowsInSection: section)
     }
     
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
-        if tableView == historyTableView {
-            let selectedKeyword = searchHistory[indexPath.row]
-            searchBar.text = selectedKeyword
+        guard let item = diffableDataSource.itemIdentifier(for: indexPath) else { return }
+        
+        switch item {
+        case .history(let keyword):
+            searchBar.text = keyword
             searchBarSearchButtonClicked(searchBar)
-        } else {
-            let video = videos[indexPath.row].video
+        case .video(let video, _):
             let webVC = WebViewController()
             webVC.videoID = video.id.videoId
             navigationController?.pushViewController(webVC, animated: true)
         }
+        tableView.deselectRow(at: indexPath, animated: true)
     }
     
     func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
-        guard tableView == historyTableView else { return nil } // 검색 기록 테이블뷰만 적용
+        guard let item = diffableDataSource.itemIdentifier(for: indexPath) else { return nil}
         
-        let deleteAction = UIContextualAction(style: .destructive, title: "삭제") { [weak self] _, _, completionHandler in
-            guard let self = self else { return }
-            // 검색 기록에서 해당 항목 삭제
-            self.searchHistory.remove(at: indexPath.row)
-            UserDefaults.standard.set(self.searchHistory, forKey: self.searchHistoryKey)
+        if case .history(let keyword) = item {
             
-            // 테이블 뷰 리로드 및 높이 업데이트
-            self.historyTableView.reloadData()
-            self.updateHistoryTableViewHeight()
+            let deleteAction = UIContextualAction(style: .destructive, title: "삭제") { [weak self] _, _, completionHandler in
+                guard let self = self else { return }
+                // 검색 기록에서 해당 항목 삭제
+                self.searchHistory.remove(at: indexPath.row)
+                UserDefaults.standard.set(self.searchHistory, forKey: self.searchHistoryKey)
+                
+                //reload가 아닌 Snapshot 업데이트
+                self.applySnapshot()
+                completionHandler(true)
+            }
             
-            completionHandler(true)
+            // 애니메이션 비활성화 (왼쪽에서 오른쪽 슬라이드 효과 제거)
+            let configuration = UISwipeActionsConfiguration(actions: [deleteAction])
+            configuration.performsFirstActionWithFullSwipe = false
+            return configuration
         }
-        
-        // 애니메이션 비활성화 (왼쪽에서 오른쪽 슬라이드 효과 제거)
-        let configuration = UISwipeActionsConfiguration(actions: [deleteAction])
-        configuration.performsFirstActionWithFullSwipe = false
-        return configuration
+        return nil
     }
 }
 
